@@ -1,0 +1,3 @@
+# This directory holds generator data files.
+# Large binary files are gitignored - download them with:
+#   python scripts/fetch_generators.py --count 500 --output data/generators/
