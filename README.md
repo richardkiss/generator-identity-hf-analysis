@@ -50,9 +50,14 @@ uv pip install -e ".[dev]"
 pip install -e ".[dev]"
 ```
 
-**Note**: Some newer generators (from blocks after ~6M height) may fail to parse
-with the PyPI version of clvm_rs. If you encounter "bad encoding" errors, you may
-need a newer version of clvm_rs.
+**Notes**: 
+- Some newer generators (from blocks after ~6M height) may fail to parse
+  with the PyPI version of clvm_rs. If you encounter "bad encoding" errors, you may
+  need a newer version of clvm_rs.
+- To extract generators from the blockchain, install [vibed-chia-tools](https://github.com/Chia-Network/vibed-chia-tools):
+  ```bash
+  pip install git+https://github.com/Chia-Network/vibed-chia-tools.git
+  ```
 
 ## Usage
 
@@ -105,9 +110,33 @@ canonical-generator-analysis/
 │   ├── analyze_generators.py
 │   ├── benchmark_sha.py
 │   ├── dos_test.py
+│   ├── sweep_coefficients.py
 │   └── fetch_generators.py
 ├── data/                    # Generator data (gitignored)
 └── docs/                    # Analysis documentation
+    └── REPRODUCE.md         # How to reproduce the analysis
+```
+
+## Reproducing the Analysis
+
+See [docs/REPRODUCE.md](docs/REPRODUCE.md) for detailed instructions on:
+1. Extracting generators from the Chia blockchain
+2. Building synthetic spend-heavy generators
+3. Running the full analysis pipeline
+
+**Quick version** (requires [vibed-chia-tools](https://github.com/Chia-Network/vibed-chia-tools)):
+
+```bash
+# Extract large generators
+chia-scan extract-blocks --db ~/.chia/mainnet/db/blockchain_v2_mainnet.sqlite \
+    -o ./data/generators --size 50k- --generator-only
+
+# Build synthetic generator
+chia-scan build-synthetic -i ./data/generators -o ./data/synthetic_1M.bin --target-size 1M
+
+# Run analysis
+python scripts/analyze_generators.py ./data/generators --batch --csv results.csv
+python scripts/dos_test.py -v
 ```
 
 ## Key Findings
