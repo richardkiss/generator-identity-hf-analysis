@@ -50,6 +50,10 @@ uv pip install -e ".[dev]"
 pip install -e ".[dev]"
 ```
 
+**Note**: Some newer generators (from blocks after ~6M height) may fail to parse
+with the PyPI version of clvm_rs. If you encounter "bad encoding" errors, you may
+need a newer version of clvm_rs.
+
 ## Usage
 
 ### Analyze a Single Generator

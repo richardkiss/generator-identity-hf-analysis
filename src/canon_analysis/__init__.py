@@ -12,16 +12,19 @@ from canon_analysis.formula import (
     calculate_cost,
     calculate_estimated_length,
 )
-from canon_analysis.intern import intern_tree
-from canon_analysis.tree_hash import tree_hash
+from canon_analysis.intern import InternStats, count_unique_nodes, intern_tree
+from canon_analysis.tree_hash import count_sha_work, tree_hash
 
 __all__ = [
     "CostComponents",
     "CostCoefficients",
     "DEFAULT_COEFFICIENTS",
+    "InternStats",
     "calculate_cost",
     "calculate_estimated_length",
     "cost_components",
+    "count_sha_work",
+    "count_unique_nodes",
     "intern_tree",
     "tree_hash",
 ]

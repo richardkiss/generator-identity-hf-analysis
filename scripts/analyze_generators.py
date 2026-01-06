@@ -5,6 +5,10 @@ Analyze generators and compare old vs new cost formulas.
 Usage:
     python scripts/analyze_generators.py path/to/generator.bin
     python scripts/analyze_generators.py ./data/generators/ --batch --csv results.csv
+
+Note: The "old cost" is calculated using the INPUT file size, which should be
+backref-serialized for real blockchain data. If the file is in classic format,
+the comparison may not reflect actual blockchain costs.
 """
 
 from __future__ import annotations
@@ -26,9 +30,21 @@ def analyze_file(path: Path, coeffs: CostCoefficients) -> Optional[dict]:
     """Analyze a single generator file."""
     try:
         data = path.read_bytes()
+        input_size = len(data)
+
         program = Program.from_bytes(data)
         components = cost_components(program)
-        return compare_formulas(components, len(data), coeffs)
+
+        # Use input file size for old cost (should be backref-serialized for real data)
+        result = compare_formulas(components, input_size, coeffs)
+
+        # Add additional info
+        classic_size = len(bytes(program))
+        result["input_size"] = input_size
+        result["classic_size"] = classic_size
+        result["compression_ratio"] = classic_size / input_size if input_size > 0 else 1.0
+
+        return result
     except Exception as e:
         print(f"Error processing {path}: {e}", file=sys.stderr)
         return None
@@ -79,6 +95,14 @@ def main() -> None:
         print(f"  Avg ratio:  {sum(ratios) / len(ratios):.3f}")
         print(f"  Max ratio:  {max(ratios):.3f}")
 
+        # Compression stats
+        comp_ratios = [r["compression_ratio"] for r in results]
+        if any(c != 1.0 for c in comp_ratios):
+            print(f"\nCompression (classic/input):")
+            print(f"  Min: {min(comp_ratios):.2f}x")
+            print(f"  Avg: {sum(comp_ratios) / len(comp_ratios):.2f}x")
+            print(f"  Max: {max(comp_ratios):.2f}x")
+
         # Outliers
         low = [r for r in results if r["cost_ratio"] and r["cost_ratio"] < 0.7]
         high = [r for r in results if r["cost_ratio"] and r["cost_ratio"] > 1.1]
@@ -95,8 +119,9 @@ def main() -> None:
 
         # Write CSV
         if args.csv:
+            fieldnames = ["filename"] + [k for k in results[0].keys() if k != "filename"]
             with open(args.csv, "w", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=results[0].keys())
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(results)
             print(f"\nWrote {args.csv}")
@@ -107,19 +132,26 @@ def main() -> None:
         if not result:
             return
 
+        input_size = result["input_size"]
+        classic_size = result["classic_size"]
+
         print(f"\nGenerator: {args.path.name}")
-        print(f"Serialized: {result['serialized_len']:,} bytes")
+        print(f"Input file size: {input_size:,} bytes")
+        if classic_size != input_size:
+            print(f"Classic serialized: {classic_size:,} bytes ({classic_size/input_size:.1f}x)")
         print()
-        print("Cost Components:")
+
+        print("Cost Components (unique nodes):")
         print(f"  atom_bytes:       {result['atom_bytes']:,}")
         print(f"  atom_count:       {result['atom_count']:,}")
         print(f"  pair_count:       {result['pair_count']:,}")
         print(f"  sha_blocks:       {result['sha_blocks']:,}")
         print(f"  sha_invocations:  {result['sha_invocations']:,}")
         print()
+
         print("Cost Comparison:")
         print(f"  Estimated length: {result['estimated_len']:,}")
-        print(f"  Old cost:         {result['old_cost']:,}")
+        print(f"  Old cost:         {result['old_cost']:,} (based on input file size)")
         print(f"  New cost:         {result['new_cost']:,}")
         print(f"  Ratio (new/old):  {result['cost_ratio']:.3f}")
         print(f"  Size fraction:    {result['size_fraction']:.1%}")

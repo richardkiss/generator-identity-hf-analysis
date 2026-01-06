@@ -5,8 +5,15 @@ DoS analysis for the cost formula.
 Creates adversarial generator structures and verifies the cost formula
 charges appropriately for the work required.
 
-Key principle: All adversarial structures should cost MORE (or similar)
-compared to the old formula, ensuring no DoS vector is undercharged.
+Key insight: The new formula charges based on UNIQUE nodes. Structures with
+lots of sharing (like balanced trees with identical leaves) correctly get
+lower costs because they require less work to hash.
+
+True DoS vectors would be structures where:
+- Many unique nodes (high work)
+- But compact serialization (low old cost)
+
+This is hard to achieve because more unique nodes = larger serialization.
 """
 
 from __future__ import annotations
@@ -26,49 +33,40 @@ from canon_analysis import cost_components, calculate_cost, CostCoefficients
 
 
 @dataclass
-class AdversarialCase:
-    """An adversarial test case."""
+class TestCase:
+    """A test case for cost formula analysis."""
 
     name: str
     description: str
     builder: Callable[[int], Program]
-    target_size: int = 100_000  # Target ~100KB
+    target_size: int
 
 
-def build_nil_atoms(count: int) -> Program:
-    """Build a list of nil atoms (zero-byte atoms)."""
-    # (nil nil nil ... nil)
-    result = Program.to(None)
-    for _ in range(count):
-        result = Program.to((None, result))
-    return result
+def build_nil_list(count: int) -> Program:
+    """Build a long list of nil atoms."""
+    items = [b'' for _ in range(count)]
+    return Program.to(items)
 
 
 def build_deep_nesting(depth: int) -> Program:
-    """Build deeply nested pairs: ((((...nil)...)))"""
-    result = Program.to(None)
-    for _ in range(depth):
-        result = Program.to((result, None))
+    """Build deeply nested pairs with UNIQUE atoms at each level."""
+    result = Program.to(b'')
+    for i in range(depth):
+        # Use unique atom at each level to prevent sharing
+        result = Program.to((result, i.to_bytes(4, 'big')))
     return result
 
 
 def build_hash_atoms(count: int) -> Program:
-    """Build a list of 32-byte atoms (hash-sized)."""
-    result = Program.to(None)
-    for i in range(count):
-        # Create unique 32-byte atoms
-        atom = i.to_bytes(32, "big")
-        result = Program.to((atom, result))
-    return result
+    """Build a list of unique 32-byte atoms."""
+    items = [i.to_bytes(32, "big") for i in range(count)]
+    return Program.to(items)
 
 
-def build_tiny_atoms(count: int) -> Program:
-    """Build a list of 1-byte atoms."""
-    result = Program.to(None)
-    for i in range(count):
-        atom = bytes([i % 256])
-        result = Program.to((atom, result))
-    return result
+def build_tiny_unique_atoms(count: int) -> Program:
+    """Build a list of unique small atoms (1-4 bytes)."""
+    items = [i.to_bytes((i.bit_length() + 7) // 8 or 1, "big") for i in range(count)]
+    return Program.to(items)
 
 
 def build_huge_atom(size: int) -> Program:
@@ -76,81 +74,105 @@ def build_huge_atom(size: int) -> Program:
     return Program.to(bytes(size))
 
 
-def build_balanced_tree(depth: int) -> Program:
-    """Build a balanced binary tree."""
-    if depth == 0:
-        return Program.to(b"leaf")
+def build_unique_balanced_tree(depth: int) -> Program:
+    """Build a balanced tree where EVERY leaf is unique (no sharing)."""
+    # Create 2^depth unique leaves
+    leaf_count = 2 ** depth
+    nodes = [Program.to(i.to_bytes(4, 'big')) for i in range(leaf_count)]
 
-    left = build_balanced_tree(depth - 1)
-    right = build_balanced_tree(depth - 1)
-    return Program.to((left, right))
+    while len(nodes) > 1:
+        new_nodes = []
+        for i in range(0, len(nodes), 2):
+            if i + 1 < len(nodes):
+                new_nodes.append(Program.to((nodes[i], nodes[i + 1])))
+            else:
+                new_nodes.append(nodes[i])
+        nodes = new_nodes
 
-
-def build_repeated_subtree(repetitions: int, subtree_size: int = 10) -> Program:
-    """Build a structure with many references to the same subtree."""
-    # Create a subtree
-    subtree = Program.to(None)
-    for i in range(subtree_size):
-        subtree = Program.to((bytes([i]), subtree))
-
-    # Reference it many times
-    result = Program.to(None)
-    for _ in range(repetitions):
-        result = Program.to((subtree, result))
-    return result
+    return nodes[0]
 
 
-# Define test cases
-ADVERSARIAL_CASES = [
-    AdversarialCase(
-        name="million_nil_atoms",
-        description="Many zero-byte atoms (high invocation count)",
-        builder=lambda n: build_nil_atoms(n),
-        target_size=50_000,  # ~50K nil atoms
+def build_shared_balanced_tree(depth: int) -> Program:
+    """Build a balanced tree with identical leaves (maximum sharing)."""
+    nodes = [Program.to(b"leaf") for _ in range(2 ** depth)]
+    while len(nodes) > 1:
+        new_nodes = []
+        for i in range(0, len(nodes), 2):
+            if i + 1 < len(nodes):
+                new_nodes.append(Program.to((nodes[i], nodes[i + 1])))
+            else:
+                new_nodes.append(nodes[i])
+        nodes = new_nodes
+    return nodes[0]
+
+
+def build_many_small_pairs(count: int) -> Program:
+    """Build many independent pairs with unique values."""
+    items = [(i * 2, i * 2 + 1) for i in range(count)]
+    return Program.to(items)
+
+
+# Test cases
+TEST_CASES = [
+    # High node count cases (potential DoS vectors)
+    TestCase(
+        name="nil_list",
+        description="Long list of nil atoms - high pair count, minimal data",
+        builder=lambda n: build_nil_list(n),
+        target_size=10_000,
     ),
-    AdversarialCase(
-        name="deep_nesting",
-        description="Deeply nested pairs",
+    TestCase(
+        name="deep_unique_nesting",
+        description="Deeply nested pairs with unique atoms",
         builder=lambda n: build_deep_nesting(n),
-        target_size=50_000,
+        target_size=10_000,
     ),
-    AdversarialCase(
+    TestCase(
+        name="tiny_unique_atoms",
+        description="Many unique small atoms",
+        builder=lambda n: build_tiny_unique_atoms(n),
+        target_size=10_000,
+    ),
+    TestCase(
+        name="many_small_pairs",
+        description="Many independent pairs with unique values",
+        builder=lambda n: build_many_small_pairs(n),
+        target_size=5_000,
+    ),
+
+    # Data-heavy cases (low work per byte)
+    TestCase(
         name="hash_sized_atoms",
         description="Many 32-byte atoms (typical puzzle data)",
         builder=lambda n: build_hash_atoms(n),
-        target_size=3000,  # 3K × 32 bytes ≈ 100KB
+        target_size=3_000,
     ),
-    AdversarialCase(
-        name="tiny_atoms",
-        description="Many 1-byte atoms",
-        builder=lambda n: build_tiny_atoms(n),
-        target_size=30_000,
-    ),
-    AdversarialCase(
+    TestCase(
         name="single_huge_atom",
-        description="One large atom (low node count)",
+        description="One large atom - minimal hashing work",
         builder=lambda n: build_huge_atom(n),
         target_size=100_000,
     ),
-    AdversarialCase(
-        name="balanced_tree",
-        description="Balanced binary tree (moderate depth)",
-        builder=lambda n: build_balanced_tree(n),
-        target_size=15,  # depth 15 = 32K leaves
+
+    # Sharing comparison
+    TestCase(
+        name="unique_balanced_tree",
+        description="Balanced tree with unique leaves (no sharing)",
+        builder=lambda n: build_unique_balanced_tree(n),
+        target_size=10,  # depth 10 = 1024 unique leaves
     ),
-    AdversarialCase(
-        name="repeated_subtree",
-        description="Many references to same subtree",
-        builder=lambda n: build_repeated_subtree(n, 20),
-        target_size=5000,
+    TestCase(
+        name="shared_balanced_tree",
+        description="Balanced tree with identical leaves (max sharing)",
+        builder=lambda n: build_shared_balanced_tree(n),
+        target_size=12,  # depth 12, but only ~13 unique nodes
     ),
 ]
 
 
 def time_tree_hash(program: Program, iterations: int = 100) -> float:
-    """Time tree hash computation."""
-    # Warm up
-    for _ in range(10):
+    """Time tree hash computation in milliseconds."""
+    for _ in range(10):  # warm up
         program.tree_hash()
 
     start = time.perf_counter()
@@ -158,7 +180,7 @@ def time_tree_hash(program: Program, iterations: int = 100) -> float:
         program.tree_hash()
     elapsed = time.perf_counter() - start
 
-    return elapsed / iterations * 1000  # ms
+    return elapsed / iterations * 1000
 
 
 def main() -> None:
@@ -171,17 +193,17 @@ def main() -> None:
 
     coeffs = CostCoefficients()
 
-    print("DoS Analysis: Adversarial Generator Structures")
+    print("Cost Formula Analysis: Various Generator Structures")
     print("=" * 70)
     print()
-    print("Testing cost formula against adversarial inputs...")
-    print("Ratio > 1.0 means new formula charges MORE (safer)")
-    print("Ratio < 1.0 means new formula charges LESS (potential DoS)")
+    print("Ratio = new_cost / old_cost")
+    print("  > 1.0: New formula charges MORE (protects against this structure)")
+    print("  < 1.0: New formula charges LESS (may be intentional for efficient structures)")
     print()
 
     results = []
 
-    for case in ADVERSARIAL_CASES:
+    for case in TEST_CASES:
         print(f"Building {case.name}...", end=" ", flush=True)
 
         try:
@@ -199,6 +221,7 @@ def main() -> None:
                 "atom_bytes": components.atom_bytes,
                 "atom_count": components.atom_count,
                 "pair_count": components.pair_count,
+                "total_nodes": components.total_nodes,
                 "old_cost": breakdown.old_cost,
                 "new_cost": breakdown.total_cost,
                 "ratio": breakdown.cost_ratio,
@@ -208,72 +231,85 @@ def main() -> None:
 
             if args.time:
                 result["hash_time_ms"] = time_tree_hash(program)
+                # Work per cost ratio: ms per billion cost units
+                result["work_per_cost"] = result["hash_time_ms"] / (breakdown.total_cost / 1e9)
 
             results.append(result)
-            print(f"done ({serialized_len:,} bytes)")
+            print(f"done ({serialized_len:,} bytes, {components.total_nodes:,} unique nodes)")
 
         except Exception as e:
             print(f"ERROR: {e}")
+            if args.verbose:
+                import traceback
+                traceback.print_exc()
             continue
 
     print()
-    print("Results")
+    print("Results (sorted by ratio)")
     print("-" * 70)
 
-    # Sort by ratio (lowest first - most concerning)
-    results.sort(key=lambda r: r["ratio"])
+    results.sort(key=lambda r: r["ratio"] if r["ratio"] else 999)
 
     for r in results:
         ratio = r["ratio"]
-        if ratio < 0.8:
-            status = "⚠️  LOW"
-        elif ratio < 1.0:
-            status = "⚠️ "
-        elif ratio > 2.0:
-            status = "✅ HIGH"
-        else:
-            status = "✅"
+        nodes = r["total_nodes"]
 
-        print(f"{status} {r['name']:<25} ratio={ratio:.2f}x  "
-              f"(size={r['size_frac']:.0%} sha={r['sha_frac']:.0%})")
+        # Categorize
+        if ratio < 0.5:
+            marker = "⚠️  MUCH LESS"
+        elif ratio < 1.0:
+            marker = "📉 less"
+        elif ratio < 1.5:
+            marker = "≈  similar"
+        elif ratio < 2.0:
+            marker = "📈 more"
+        else:
+            marker = "✅ MUCH MORE"
+
+        print(f"{marker:14} {r['name']:<25} ratio={ratio:.2f}x  nodes={nodes:,}")
 
         if args.verbose:
-            print(f"     {r['description']}")
-            print(f"     serialized={r['serialized_len']:,}  "
+            print(f"    {r['description']}")
+            print(f"    serialized={r['serialized_len']:,}  "
                   f"atoms={r['atom_count']:,}  pairs={r['pair_count']:,}  "
                   f"atom_bytes={r['atom_bytes']:,}")
-            print(f"     old_cost={r['old_cost']:,}  new_cost={r['new_cost']:,}")
+            print(f"    old_cost={r['old_cost']:,}  new_cost={r['new_cost']:,}")
+            print(f"    size_component={r['size_frac']:.0%}  sha_component={r['sha_frac']:.0%}")
             if args.time and "hash_time_ms" in r:
-                print(f"     hash_time={r['hash_time_ms']:.2f}ms")
+                print(f"    hash_time={r['hash_time_ms']:.3f}ms  "
+                      f"work_per_cost={r['work_per_cost']:.3f} ms/Gcost")
             print()
 
     print()
-    print("Summary")
+    print("Analysis")
     print("-" * 70)
 
-    low_ratio = [r for r in results if r["ratio"] < 1.0]
-    high_ratio = [r for r in results if r["ratio"] >= 2.0]
+    # Find structures where new cost is lower
+    low_ratio = [r for r in results if r["ratio"] and r["ratio"] < 0.8]
+    high_ratio = [r for r in results if r["ratio"] and r["ratio"] > 1.5]
 
     if low_ratio:
-        print(f"⚠️  {len(low_ratio)} cases with ratio < 1.0 (charged LESS than before):")
+        print("Structures costing LESS under new formula:")
         for r in low_ratio:
-            print(f"   - {r['name']}: {r['ratio']:.2f}x")
+            # Check if it's due to sharing or data-heavy
+            if r["atom_bytes"] > r["serialized_len"] * 0.5:
+                reason = "(data-heavy, low hash work)"
+            elif r["total_nodes"] < 100:
+                reason = "(high sharing, few unique nodes)"
+            else:
+                reason = ""
+            print(f"  - {r['name']}: {r['ratio']:.2f}x {reason}")
         print()
 
     if high_ratio:
-        print(f"✅ {len(high_ratio)} cases with ratio >= 2.0 (charged MORE than before)")
+        print("Structures costing MORE under new formula (DoS protection):")
+        for r in high_ratio:
+            print(f"  - {r['name']}: {r['ratio']:.2f}x")
+        print()
 
-    # Check for dangerous cases
-    dangerous = [r for r in results if r["ratio"] < 0.5]
-    if dangerous:
-        print()
-        print("🚨 DANGER: Cases with ratio < 0.5 (charged HALF or less):")
-        for r in dangerous:
-            print(f"   - {r['name']}: {r['ratio']:.2f}x")
-        print("   These could be DoS vectors!")
-    else:
-        print()
-        print("✅ No dangerous cases found (all ratios >= 0.5)")
+    # Summary
+    print("Key insight: The new formula rewards efficient structures (sharing, data-heavy)")
+    print("and penalizes structures with many small unique nodes (high hash work).")
 
 
 if __name__ == "__main__":

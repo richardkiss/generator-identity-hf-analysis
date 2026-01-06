@@ -16,7 +16,7 @@ from typing import Optional
 
 from clvm_rs import Program
 
-from canon_analysis.intern import intern_tree
+from canon_analysis.intern import count_unique_nodes
 from canon_analysis.tree_hash import count_sha_work
 
 
@@ -61,8 +61,7 @@ def cost_components(program: Program) -> CostComponents:
     """
     Extract cost components from a CLVM program.
 
-    The program is interned to ensure we count unique nodes only,
-    producing deterministic results regardless of serialization format.
+    Uses iterative traversal to handle arbitrarily deep trees.
 
     Args:
         program: A clvm_rs Program (typically a generator)
@@ -70,8 +69,8 @@ def cost_components(program: Program) -> CostComponents:
     Returns:
         CostComponents with all raw values for the cost formula
     """
-    # Intern the tree to deduplicate
-    interned = intern_tree(program)
+    # Count unique nodes
+    atom_count, pair_count, atom_bytes = count_unique_nodes(program)
 
     # Count SHA work
     sha_blocks, sha_invocations = count_sha_work(program)
@@ -80,31 +79,24 @@ def cost_components(program: Program) -> CostComponents:
     tree_hash_bytes = bytes(program.tree_hash())
 
     return CostComponents(
-        atom_bytes=interned.atom_bytes,
-        atom_count=interned.atom_count,
-        pair_count=interned.pair_count,
+        atom_bytes=atom_bytes,
+        atom_count=atom_count,
+        pair_count=pair_count,
         sha_blocks=sha_blocks,
         sha_invocations=sha_invocations,
         tree_hash=tree_hash_bytes,
     )
 
 
-def cost_components_from_bytes(data: bytes, use_backrefs: bool = True) -> CostComponents:
+def cost_components_from_bytes(data: bytes) -> CostComponents:
     """
     Extract cost components from serialized CLVM data.
 
     Args:
         data: Serialized CLVM program bytes
-        use_backrefs: If True, parse with backref support (default)
 
     Returns:
         CostComponents for the deserialized program
     """
-    if use_backrefs:
-        program = Program.from_bytes(data)
-    else:
-        # clvm_rs doesn't expose non-backref parsing directly,
-        # but from_bytes handles both formats
-        program = Program.from_bytes(data)
-
+    program = Program.from_bytes(data)
     return cost_components(program)
