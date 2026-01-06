@@ -119,6 +119,13 @@ canonical-generator-analysis/
 
 ## Reproducing the Analysis
 
+See the documentation in `docs/`:
+
+- **[BENCHMARK_WORKFLOW.md](docs/BENCHMARK_WORKFLOW.md)** - Complete workflow for deriving parameters
+- **[REPRODUCE.md](docs/REPRODUCE.md)** - Step-by-step reproduction guide
+
+### Summary of Steps
+
 See [docs/REPRODUCE.md](docs/REPRODUCE.md) for detailed instructions on:
 1. Extracting generators from the Chia blockchain
 2. Building synthetic spend-heavy generators
