@@ -1,0 +1,23 @@
+[package]
+name = "generator-identity-hf-analysis-tools"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Research and analysis tools for canonical generator cost analysis"
+publish = false
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+clvmr = { path = "../../clvm_rs/intern" }
+
+[[bin]]
+name = "dos-test"
+path = "src/bin/dos-test.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "serialization-dos-bench"
+path = "src/bin/serialization-dos-bench.rs"
+test = false
+bench = false

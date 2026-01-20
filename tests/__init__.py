@@ -1,1 +1,1 @@
-# Tests for canonical-generator-analysis
+# Tests for generator-identity-hf-analysis

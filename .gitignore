@@ -52,3 +52,14 @@ results/
 Thumbs.db
 activate
 venv
+
+# Rust
+tools/target/
+tools/Cargo.lock
+**/*.rs.bk
+*.pdb
+
+
+# Added by cargo
+
+/target

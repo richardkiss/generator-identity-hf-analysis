@@ -1,7 +1,7 @@
 [project]
-name = "canonical-generator-analysis"
+name = "generator-identity-hf-analysis"
 version = "0.1.0"
-description = "Analysis tools for justifying cost constants in the Canonicalized Generators hard fork"
+description = "Analysis tools and documentation for the Generator Identity Hard Fork"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
