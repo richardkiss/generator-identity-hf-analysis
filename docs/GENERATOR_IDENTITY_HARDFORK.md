@@ -66,7 +66,12 @@ Any serialization → deserialize → intern → canonical tree → deterministi
 - **Atoms** are equal if their byte contents are identical
 - **Pairs** are equal if their left children are equal AND their right children are equal (recursively)
 
-After interning, each equivalence class is represented by exactly one node. The cost formula counts each unique atom and pair once, making the result deterministic regardless of serialization format or how many times a subtree appears in the original tree.
+After interning, each equivalence class is represented by exactly one node. The cost formula counts each unique atom and pair once because:
+
+- **Memory/storage cost**: After interning, each unique node is stored only once in memory, regardless of how many times it appeared in the original serialization.
+- **SHA256 CPU cost**: When computing the tree hash with caching, each unique node is hashed only once, regardless of how many times it appears in the tree structure.
+
+This makes the cost deterministic and independent of serialization format or how many times a subtree appears in the original tree.
 
 ### Relationship to Tree Hash
 
@@ -220,7 +225,7 @@ The blended formula shifts cost toward structures with high node counts (where S
 
 ### Potential Concern: Blockchain Storage Abuse
 
-⚠️ **This could enable cheaper on-chain storage.**
+⚠️ **The new formula allows larger atoms for the same cost.**
 
 A farmer could create a spend with a large atom in a "garbage" solution containing incompressible data:
 - Old formula: ~895 KB max per block at cost limit
@@ -228,16 +233,7 @@ A farmer could create a spend with a large atom in a "garbage" solution containi
 
 This roughly **doubles the potential storage per block** for someone willing to burn the cost.
 
-### Assessment
-
-This is a **known trade-off**, not an oversight:
-
-1. **DoS protection was the priority**: The old formula left CPU-bound attacks undercharged by 4.7×. Fixing that was more important than preventing storage abuse.
-2. **Storage abuse is self-limiting**: Attackers must pay full cost (in fees) for the space. Unlike DoS attacks, storage abuse doesn't let you do more work than you pay for.
-3. **Compression still helps**: Real generators with structure (not random data) still benefit from sharing. Only incompressible garbage blobs get "cheaper."
-4. **Future mitigation possible**: If storage abuse becomes a problem, the `SIZE_COST_PER_BYTE` multiplier could be increased in a future fork without changing the formula structure.
-
-**Bottom line**: We traded slightly cheaper storage for 4.7× better DoS protection. This seems like the right trade-off since DoS attacks are a consensus/security issue, while storage abuse is an economics issue.
+**Note**: This is discussed as an open question in [Question 3: Balancing Storage vs. SHA Costs](#question-3-balancing-storage-vs-sha-costs) below.
 
 ---
 
@@ -245,7 +241,7 @@ This is a **known trade-off**, not an oversight:
 
 ### SHA256 Timing Benchmark
 
-**Tool**: `scripts/benchmark_sha.py` (in this repository)
+**Tool**: `benchmark-sha` (installed as entry point)
 
 1. Hash blobs of varying sizes (1 byte to 64KB)
 2. Test around SHA256 block boundaries (55/56, 119/120 bytes)
@@ -397,6 +393,8 @@ This means:
 
 The following design questions need reviewer input before finalizing the cost model:
 
+> **Note**: For a more radical alternative approach, see [Generator as Witness Proposal](GENERATOR_AS_WITNESS_PROPOSAL.md), which proposes not committing to the generator at all (treating it as pure witness). This is presented for discussion but is not part of the current implementation plan.
+
 ### Question 1: Unifying SHA256 Tree Hash Cost Models
 
 **Context**: There are two places where SHA256 tree hashing occurs with different cost models:
@@ -454,6 +452,52 @@ This accounts for the work of computing `SHA256_tree_hash(generator)` for identi
   - Cost still correlates well with actual work
   - Backward compatibility is maintained (typical generators still cost ~96-106% of old)
 
+### Question 3: Balancing Storage vs. SHA Costs
+
+**Context**: The current blended formula (50/50 split between size and SHA components) allows larger single atoms compared to the old formula:
+- Old formula: ~895 KB max atom at 11B cost limit
+- New formula: ~1.81 MB max atom at 11B cost limit
+
+This roughly doubles the potential on-chain storage per block for someone willing to burn the cost.
+
+**Question**: Should we adjust the balance between storage cost and SHA cost to prevent this increase in potential storage abuse?
+
+**Options**:
+
+#### Option A: Keep Current Blended Formula (50/50 Split)
+
+**Pros:**
+- **Simplicity**: Maintains the balanced 50/50 split between size and SHA components
+- **No increased storage abuse**: Does not make storage abuse worse than the current situation
+- **DoS protection**: Maintains strong protection against CPU-bound attacks (4.7× improvement)
+- **Validated**: Formula has been tested and validated against real generators
+
+**Cons:**
+- **Larger atoms allowed**: Permits ~2× larger single atoms compared to old formula
+- **Storage economics**: Makes on-chain storage slightly cheaper for incompressible data
+
+#### Option B: Increase Storage Cost, Reduce SHA Cost
+
+Increase `SIZE_COST_PER_BYTE` and reduce (possibly to zero) `SHA_COST_PER_UNIT`:
+
+**Pros:**
+- **Prevents storage abuse**: Maintains or reduces maximum atom size at cost limit
+- **Still protects against DoS**: If SHA cost is non-zero, maintains protection against CPU-bound attacks
+- **Flexible**: Can tune the balance between storage and SHA costs
+
+**Cons:**
+- **Complexity**: Requires re-tuning multipliers and re-validation against real generators
+- **Potential DoS risk**: If SHA cost goes to zero, loses protection against CPU-bound attacks with many small nodes
+- **Less balanced**: Moves away from the validated 50/50 split that matches actual work distribution
+
+**Considerations**:
+- **DoS protection priority**: The old formula left CPU-bound attacks undercharged by 4.7×. Fixing that was more important than preventing storage abuse.
+- **Storage abuse is self-limiting**: Attackers must pay full cost (in fees) for the space. Unlike DoS attacks, storage abuse doesn't let you do more work than you pay for.
+- **Compression still helps**: Real generators with structure (not random data) still benefit from sharing. Only incompressible garbage blobs get "cheaper."
+- **Future flexibility**: If storage abuse becomes a problem, Option B can be implemented in a future fork by adjusting the multipliers without changing the formula structure.
+
+**Current proposal**: Option A (blended formula) prioritizes DoS protection and simplicity. DoS attacks are a consensus/security issue, while storage abuse is primarily an economics issue that can be addressed later if needed.
+
 ---
 
 ## Summary
@@ -489,11 +533,11 @@ This accounts for the work of computing `SHA256_tree_hash(generator)` for identi
 
 This repository contains all the tools, scripts, and data used to derive and validate the cost formula parameters:
 
-- **Python Analysis Scripts**: 
-  - `scripts/analyze_generators.py` - Analyze real generators from mainnet
-  - `scripts/benchmark_sha.py` - SHA256 performance benchmarking
-  - `scripts/dos_test.py` - Adversarial structure testing
-  - `scripts/sweep_coefficients.py` - Coefficient optimization
+- **Python Analysis Scripts** (installed as entry points): 
+  - `analyze-generators` - Analyze real generators from mainnet
+  - `benchmark-sha` - SHA256 performance benchmarking
+  - `dos-test` - Adversarial structure testing
+  - `sweep-coefficients` - Coefficient optimization
 
 - **Rust Analysis Tools**:
   - `tools/dos-test` - Detailed DoS analysis with timing
@@ -508,17 +552,20 @@ This repository contains all the tools, scripts, and data used to derive and val
 These commands should be run from the **[generator-identity-hf-analysis](https://github.com/richardkiss/generator-identity-hf-analysis)** repository:
 
 ```bash
-# SHA256 timing benchmark (Python)
-python scripts/benchmark_sha.py
+# SHA256 timing benchmark
+benchmark-sha
 
-# DoS test with adversarial structures (Python)
-python scripts/dos_test.py -v
+# DoS test with adversarial structures
+dos-test -v
 
-# Analyze synthetic generators (Python)
-python scripts/analyze_generators.py data/synthetic_1M.bin --verbose
+# Analyze synthetic generators
+analyze-generators data/synthetic_1M.bin --verbose
 
-# Batch analysis of generator directory (Python)
-python scripts/analyze_generators.py ./data/generators --batch --csv results.csv
+# Batch analysis of generator directory
+analyze-generators ./data/generators --batch --csv results.csv
+
+# Coefficient sweep
+sweep-coefficients ./data/generators/
 ```
 
 For Rust-based analysis tools:
