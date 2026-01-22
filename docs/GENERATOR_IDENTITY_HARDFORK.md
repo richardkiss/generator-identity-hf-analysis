@@ -256,7 +256,7 @@ This is a **known trade-off**, not an oversight:
 
 ### Cost Coefficient Fitting
 
-**Tools**: Analysis scripts in this repository (see [REPRODUCE.md](REPRODUCE.md) for details)
+**Tools**: Analysis scripts in this repository (see [ANALYSIS_WORKFLOW.md](ANALYSIS_WORKFLOW.md) for details)
 
 **Data**: 
 - 509 real mainnet generators (mix of random blocks + largest blocks)
@@ -501,7 +501,7 @@ This repository contains all the tools, scripts, and data used to derive and val
 
 - **Documentation**:
   - `docs/GENERATOR_IDENTITY_HARDFORK.md` - Complete technical specification (this document)
-  - `docs/REPRODUCE.md` - Step-by-step reproduction guide
+  - `docs/ANALYSIS_WORKFLOW.md` - Step-by-step analysis workflow
 
 ### Benchmark Commands
 

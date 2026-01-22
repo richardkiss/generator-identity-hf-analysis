@@ -11,12 +11,8 @@ Usage:
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Optional
-
-# Add src to path for development
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from clvm_rs import Program
 

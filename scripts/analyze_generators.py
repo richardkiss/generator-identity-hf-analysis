@@ -14,12 +14,8 @@ the comparison may not reflect actual blockchain costs.
 from __future__ import annotations
 
 import csv
-import sys
 from pathlib import Path
 from typing import Optional
-
-# Add src to path for development
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from canon_analysis import cost_components, calculate_cost, CostCoefficients
 from canon_analysis.formula import compare_formulas

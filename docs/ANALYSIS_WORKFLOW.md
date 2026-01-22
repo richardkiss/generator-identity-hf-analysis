@@ -1,6 +1,6 @@
-# Reproducing the Cost Formula Analysis
+# Cost Formula Analysis Workflow
 
-This document provides a complete step-by-step guide to reproduce the cost formula analysis from scratch. It covers data collection, analysis, and validation of all parameters used in the Generator Identity Hard Fork.
+This document provides a complete step-by-step guide to run the cost formula analysis from scratch. It covers data collection, analysis, and validation of all parameters used in the Generator Identity Hard Fork.
 
 > **Note**: For the complete technical specification and design rationale, see [GENERATOR_IDENTITY_HARDFORK.md](GENERATOR_IDENTITY_HARDFORK.md).
 
