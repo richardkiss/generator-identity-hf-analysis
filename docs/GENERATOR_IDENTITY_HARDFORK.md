@@ -109,7 +109,7 @@ total_cost = size_component × SIZE_COST_PER_BYTE
 |----------|-------|---------|
 | B | 1 | Per byte of atom data |
 | A | 2 | Per-atom overhead |
-| P | 2 | Per-pair overhead |
+| P | 3 | Per-pair overhead (ensures size_component ≥ serde_2026_bytes; see SERDE2026_UPPER_BOUND.md) |
 | S | 1 | Per SHA256 block (64 bytes) |
 | I | 8 | Per SHA256 invocation |
 | SIZE_COST_PER_BYTE | 6000 | Size component multiplier |

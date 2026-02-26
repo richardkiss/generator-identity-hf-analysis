@@ -61,7 +61,7 @@ Any well-behaved peer can rewrite their serialization to be under this bound. An
 | SHA_COST_PER_UNIT | 4,500 | SHA component multiplier |
 | B | 1 | Per byte of atom data |
 | A | 2 | Per-atom overhead |
-| P | 2 | Per-pair overhead |
+| P | 3 | Per-pair overhead (ensures size_component ≥ serde_2026_bytes) |
 | S | 1 | Per SHA256 block |
 | I | 8 | Per SHA256 invocation |
 
