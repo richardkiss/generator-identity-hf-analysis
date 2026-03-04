@@ -18,6 +18,7 @@ This decouples consensus from serialization format, enabling future compression 
 | Document | Description |
 |----------|-------------|
 | **[Technical Specification](docs/GENERATOR_IDENTITY_HARDFORK.md)** | Complete design: problem statement, cost formula derivation, DoS analysis, implementation details |
+| **[serde_2026 Upper Bound Proof](docs/SERDE2026_UPPER_BOUND.md)** | Proof that `A=2, P=3` bounds serde_2026 serialized size, with empirical validation |
 | **[Analysis Workflow](docs/ANALYSIS_WORKFLOW.md)** | Step-by-step instructions to run the analysis from scratch |
 | **[Serialization DOS Analysis](docs/SERIALIZATION_DOS_ANALYSIS.md)** | Analysis of peer protocol DOS vulnerability in generator deserialization and mitigation strategy |
 | **[Generator as Witness Proposal](docs/GENERATOR_AS_WITNESS_PROPOSAL.md)** | Alternative approach: treat generator as pure witness, don't commit to it at all (future consideration) |
