@@ -279,19 +279,20 @@ python scripts/sweep_coefficients.py data/generators/top-generators \
 ```
   B   A   P     Min     Avg     Max    Dist
 ---------------------------------------------
-  1   2   2   0.610   0.990   1.130   0.010 *
-  1   1   2   0.590   0.980   1.060   0.020 *
+  1   2   3   0.610   0.990   1.130   0.010 *
+  1   1   3   0.590   0.980   1.060   0.020 *
   1   0   3   0.650   1.030   1.290   0.030
   ...
 
-Best combination: B=1, A=2, P=2
+Best combination: B=1, A=2, P=3
   Average ratio: 0.99
   Range: 0.61 - 1.13
 ```
 
 **Interpretation:**
-- B=1, A=2, P=2 gives average ratio closest to 1.0
-- This means: `size_component = atom_bytes + 2×atom_count + 2×pair_count`
+- B=1, A=2, P=3 gives average ratio closest to 1.0
+- This means: `size_component = atom_bytes + 2×atom_count + 3×pair_count`
+- **P=3 is required** to ensure size_component ≥ serde_2026 serialized size (see [SERDE2026_UPPER_BOUND.md](SERDE2026_UPPER_BOUND.md))
 - The formula matches old backref-serialized costs on average
 - The range (0.61-1.13) is acceptable: low end is data-heavy blocks, high end is structure-heavy blocks
 
@@ -349,7 +350,7 @@ cargo run --release --bin serialization-dos-bench -- data/synthetic_1M.bin --sta
 
 The ratio is consistent across hardware (6.7-7.9×), justifying `I=8` in the formula.
 
-### Real Generator Analysis (B=1, A=2, P=2)
+### Real Generator Analysis (B=1, A=2, P=3)
 
 | Metric | Expected | Notes |
 |--------|----------|-------|
@@ -393,7 +394,7 @@ From the analysis, the final parameters are:
 **The Complete Formula:**
 ```
 size_component = B×atom_bytes + A×atom_count + P×pair_count
-               = atom_bytes + 2×atom_count + 2×pair_count
+               = atom_bytes + 2×atom_count + 3×pair_count
 
 sha_component  = S×sha_blocks + I×sha_invocations  
                = sha_blocks + 8×sha_invocations
@@ -408,7 +409,7 @@ total_cost = size_component × 6000 + sha_component × 4500
 Before finalizing parameters, verify all of the following:
 
 - [ ] **SHA benchmark**: I/S ratio is consistent (~7-9 across hardware)
-- [ ] **Coefficient sweep**: B=1, A=2, P=2 gives avg ratio ~1.0
+- [ ] **Coefficient sweep**: B=1, A=2, P=3 gives avg ratio ~1.0 and upper bounds serde_2026
 - [ ] **DoS test**: Adversarial structures cost 2x+ more
 - [ ] **Synthetic generators**: Have ~45/55 size/SHA split
 - [ ] **Real generators**: Have ratio range 0.5-1.1 (no extreme outliers)

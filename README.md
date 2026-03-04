@@ -25,13 +25,17 @@ This decouples consensus from serialization format, enabling future compression 
 
 ## Implementation PRs
 
-| PR | Repository | Branch | Description |
-|----|------------|--------|-------------|
-| **#1** | [clvm_rs](https://github.com/Chia-Network/clvm_rs) | `generator-identity-hf` | Core interning infrastructure |
-| **#2** | [chia_rs](https://github.com/Chia-Network/chia_rs) | `generator-identity-hf` | Chia-specific cost calculation |
-| **#3** | [clvm_rs](https://github.com/Chia-Network/clvm_rs) | `serde_2026` | New serialization format (future work) |
+The implementation lives in two competing PRs on `chia_rs`:
 
-PR #2 depends on PR #1. PR #3 is independent.
+| PR | Repository | Description |
+|----|------------|-------------|
+| **#1371** | [chia_rs](https://github.com/Chia-Network/chia_rs) | **Split cost model**: `cost = size * 6000 + sha * 4500` (with P=3) |
+| **#1377** | [chia_rs](https://github.com/Chia-Network/chia_rs) | **Pure storage model**: `cost = size * 12000` (SHA component removed, with P=3) |
+
+Both use the same size formula: `size = atom_bytes + 2*atom_count + 3*pair_count`
+
+Additional work:
+- [clvm_rs `serde_2026` branch](https://github.com/Chia-Network/clvm_rs): New serialization format (future work)
 
 ## Installation
 

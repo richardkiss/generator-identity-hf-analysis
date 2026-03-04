@@ -109,7 +109,7 @@ total_cost = size_component × SIZE_COST_PER_BYTE
 |----------|-------|---------|
 | B | 1 | Per byte of atom data |
 | A | 2 | Per-atom overhead |
-| P | 3 | Per-pair overhead (ensures size_component ≥ serde_2026_bytes; see SERDE2026_UPPER_BOUND.md) |
+| P | 3 | Per-pair overhead (ensures size_component ≥ serde_2026_bytes; see [SERDE2026_UPPER_BOUND.md](SERDE2026_UPPER_BOUND.md)) |
 | S | 1 | Per SHA256 block (64 bytes) |
 | I | 8 | Per SHA256 invocation |
 | SIZE_COST_PER_BYTE | 6000 | Size component multiplier |
@@ -274,9 +274,12 @@ This roughly **doubles the potential storage per block** for someone willing to 
 After testing various combinations, the final coefficients are:
 - B = 1 (per atom byte)
 - A = 2 (per atom, includes ~1 byte length prefix + overhead)
-- P = 2 (per pair)
+- P = 3 (per pair, ensures size_component ≥ serde_2026_bytes; proof in [SERDE2026_UPPER_BOUND.md](SERDE2026_UPPER_BOUND.md))
+
+**Why P=3 instead of P=2**: Empirical testing showed P=2 fails to upper-bound serialized byte count for 2 out of 6 real generators. P=3 passes all generators with margin ≥403 bytes. The proof in [SERDE2026_UPPER_BOUND.md](SERDE2026_UPPER_BOUND.md) demonstrates that P=3 is the minimum correct integer coefficient.
 
 These values were validated against:
+- 6 large mainnet generators (all pass with P=3, min margin +403 bytes)
 - 509 real mainnet generators (avg ratio = 0.99, range 0.61-1.13)
 - Synthetic spend-heavy generators (ratio = 0.86-1.02)
 
@@ -300,25 +303,19 @@ This work is split across three PRs:
 
 ### Key Implementation Details
 
-**In clvm_rs (PR #1):**
-- `src/serde/intern.rs`: Core interning algorithm (single-pass post-order traversal)
-- Returns `InternedTree` with canonical node structure and `InternedStats` for cost calculation
-- Generic infrastructure usable by any consumer (not Chia-specific)
+**In chia_rs (PRs #1371 and #1377):**
+- `crates/chia-consensus/src/generator_cost.rs`: Cost calculation functions
+- `crates/chia-consensus/src/run_block_generator.rs`: Updated to use interned path via `run_block_generator_inner()` when `INTERNED_GENERATOR` flag is set
+- `crates/chia-consensus/src/flags.rs`: `INTERNED_GENERATOR` flag activates at `hard_fork2_height`
+- `crates/chia-consensus/src/run_spendbundle.rs`: Mempool validation also uses interned cost
 
-**In chia_rs (PR #2):**
-- `crates/chia-consensus/src/generator_cost.rs`: Cost calculation functions using `InternedStats`
-- `crates/chia-consensus/src/run_block_generator.rs`: Updated to use `run_block_generator3()` when `INTERNED_GENERATOR` flag is set
-- `crates/chia-consensus/src/flags.rs`: New `INTERNED_GENERATOR` flag enabled after `hard_fork2_height`
-
-**In clvm_rs (PR #3):**
-- `src/serde_2026/`: New serialization format with varint encoding
-- Leverages interning infrastructure for optimal compression
-- Independent from consensus changes (future work)
+**Note**: There is NO `run_block_generator3()`. The implementation uses `run_block_generator2()` with flag dispatch to `run_block_generator_inner()` (shared execution logic).
 
 **Critical**: When the `INTERNED_GENERATOR` flag is set, validation must:
-1. Intern the generator to get canonical tree
-2. Calculate cost from interned stats
-3. Run the generator using the interned allocator (ensures atom/pair limits apply to canonical structure)
+1. Deserialize the generator
+2. Intern the generator to get canonical tree
+3. Calculate cost from interned stats
+4. Run the generator using the interned allocator (ensures atom/pair limits apply to canonical structure)
 
 ---
 
@@ -342,7 +339,7 @@ Farmers need to update their block creation code to use the new generator identi
 | `chia/consensus/block_creation.py` | Use `tree_hash` as `generator_root` after fork |
 | `chia/consensus/default_constants.py` | Add `HARD_FORK_TREE_GENERATOR_HEIGHT` |
 
-The cost is already computed in Rust by `run_block_generator2()`/`run_block_generator3()`. The Python side just uses `conds.cost`. If Rust changes the cost formula based on height → Python automatically uses the new cost.
+The cost is already computed in Rust by `run_block_generator2()` (with flag dispatch to interned path). The Python side just uses `conds.cost`. If Rust changes the cost formula based on the `INTERNED_GENERATOR` flag → Python automatically uses the new cost.
 
 ---
 
@@ -531,7 +528,9 @@ Increase `SIZE_COST_PER_BYTE` and reduce (possibly to zero) `SHA_COST_PER_UNIT`:
 
 **Analysis Repository**: [generator-identity-hf-analysis](https://github.com/richardkiss/generator-identity-hf-analysis)
 
-This repository contains all the tools, scripts, and data used to derive and validate the cost formula parameters:
+This repository contains all the tools, scripts, and data used to derive and validate the cost formula parameters.
+
+**See [SERDE2026_UPPER_BOUND.md](SERDE2026_UPPER_BOUND.md)** for the proof that P=3 provides an upper bound on serde_2026 serialization size.
 
 - **Python Analysis Scripts** (installed as entry points): 
   - `analyze-generators` - Analyze real generators from mainnet
@@ -583,6 +582,6 @@ cargo run --release --bin serialization-dos-bench -- data/synthetic_1M.bin --sta
 
 - **Analysis Repository**: [generator-identity-hf-analysis](https://github.com/richardkiss/generator-identity-hf-analysis) - Tools and data for cost formula derivation
 - **Implementation PRs**:
-  - PR #1 (clvm_rs): [Interning Infrastructure](https://github.com/Chia-Network/clvm_rs/pull/TBD)
-  - PR #2 (chia_rs): [Cost Calculation](https://github.com/Chia-Network/chia_rs/pull/TBD)
-  - PR #3 (clvm_rs): [serde_2026 Format](https://github.com/Chia-Network/clvm_rs/pull/TBD) (future work)
+  - [PR #1371 (chia_rs)](https://github.com/Chia-Network/chia_rs/pull/1371): Split cost model (size + SHA)
+  - [PR #1377 (chia_rs)](https://github.com/Chia-Network/chia_rs/pull/1377): Pure storage model (size only)
+- **Upper Bound Proof**: [SERDE2026_UPPER_BOUND.md](SERDE2026_UPPER_BOUND.md)
